@@ -1,0 +1,222 @@
+---
+title: "BIO611 Final Project - Microcystis and Exiguobacterium"
+output: html_document
+date: "2024-05-03"
+author: "Chelsea Donovan"
+---
+```{r Loading Data and Libraries}
+exiguo <- read.csv("/Users/chelseadonovan/Dropbox/Mac/Downloads/School/WURCH LAB/Exiguo Data Analysis/exiguodatalogfold.csv")
+library(tidyverse)
+```
+
+```{r Creating New Organized Dataframe}
+library(tidyverse)
+#Renaming trials for easier analysis
+exiguo <- exiguo %>%
+  rename("Trial 1" = "Mid.Log.Control.1.TPM",
+         "Trial 2" = "Mid.Log.Control.2.TPM",
+         "Trial 3" = "Mid.Log.Control.3.TPM",
+         "Trial 4" = "Mid.Log.Exiguo.1.TPM",
+         "Trial 5" = "Mid.Log.Exiguo.2.TPM",
+         "Trial 6" = "Mid.Log.Exiguo.3.TPM")
+
+#Putting data into long format 
+long_exiguo_data <- exiguo %>%
+  pivot_longer(cols = starts_with("Trial"),
+               names_to = "Trial",
+               values_to = "Trial_value")
+long_exiguo_data <- long_exiguo_data %>%
+  rename("Expression" = "Trial_value")
+long_exiguo_data <- long_exiguo_data %>%
+  mutate(Trial = gsub("Trial ", "", Trial))
+
+#Filtering Dataset for Gene Products
+ammonium <- subset(long_exiguo_data, grepl("ammon", Gene.Product, ignore.case = TRUE))
+nitrogen <- subset(long_exiguo_data, grepl("nitrogen", Gene.Product, ignore.case = TRUE))
+biotin <- subset(long_exiguo_data, grepl("biotin", Gene.Product, ignore.case = TRUE))
+phosphorus <- subset(long_exiguo_data, grepl("phosphor", Gene.Product, ignore.case = TRUE))
+ATP <- subset(long_exiguo_data, grepl("ATP", Gene.Product, ignore.case = TRUE))
+
+#Creating new column for gene product labels 
+long_exiguo_data_product <- long_exiguo_data %>%
+  mutate(Label = case_when(
+    grepl("ammon", Gene.Product, ignore.case = TRUE) ~ "ammonium",
+    grepl("nitrogen", Gene.Product, ignore.case = TRUE) ~ "nitrogen",
+    grepl("biotin", Gene.Product, ignore.case = TRUE) ~ "biotin",
+    grepl("phosphor", Gene.Product, ignore.case = TRUE) ~ "phosphorus",
+    grepl("ATP", Gene.Product, ignore.case = TRUE) ~ "ATP",
+    TRUE ~ "Other"
+  )) %>%
+  filter(Label != "Other")
+```
+
+```{r Visualizing Gene Products}
+#Setting colors for trials, Control is royalblue and Exiguo is turquoise
+trial_colors <- c("1" = "royalblue", "2" = "royalblue", "3" = "royalblue",
+                  "4" = "turquoise", "5" = "turquoise", "6" = "turquoise")
+
+#Capitalizing gene product names for better visuals
+long_exiguo_data_product <- long_exiguo_data_product %>%
+  mutate(Label = gsub("ammonium", "Ammonium", Label))
+
+long_exiguo_data_product <- long_exiguo_data_product %>%
+  mutate(Label = gsub("biotin", "Biotin", Label))
+
+long_exiguo_data_product <- long_exiguo_data_product %>%
+  mutate(Label = gsub("nitrogen", "Nitrogen", Label))
+
+long_exiguo_data_product <- long_exiguo_data_product %>%
+  mutate(Label = gsub("phosphorus", "Phosphorus", Label))
+
+#Changing trial names for legend purposes
+legend_labels <- c("Control 1", "Control 2", "Control 3", "Exiguo 4", "Exiguo 5", "Exiguo 6")
+
+#Plotting all 5 gene products overall expression together
+ggplot(long_exiguo_data_product, aes(Label, Expression, color = Trial)) +
+  geom_point(size = 2) +  
+  scale_color_manual(values = trial_colors, labels = legend_labels) + 
+  theme_classic(base_size = 14) +
+  xlab("Product") +
+  ylab("Expression (tags per million)")
+
+#Plotting individual gene product expression by trial
+ggplot(long_exiguo_data_product, aes(Trial, Expression, color = Trial)) +
+  geom_point(size = 2) +
+  scale_color_manual(values = trial_colors, labels = legend_labels) + 
+  theme_classic(base_size = 14) +
+  xlab("Trial") +
+  ylab("Expression (tags per million)") +
+  facet_wrap(~ Label)
+```
+
+```{r Shapiro Wilk}
+#####SHAPIRO WILK
+
+#Created a dataframe to store the Shapiro Wilk results
+gene_products <- unique(long_exiguo_data_product$Label)
+shapiro_results <- list()
+
+#Run SW on individual gene products
+for (label in gene_products) {
+  data_subset <- long_exiguo_data_product$Expression[long_exiguo_data_product$Label == label]
+  shapiro_results[[label]] <- shapiro.test(data_subset)
+}
+
+# View the results
+print(shapiro_results)
+
+# Visualize each gene product distribution with histogram
+  ggplot(long_exiguo_data_product, aes(x = Expression)) +
+  geom_histogram(binwidth = 2, fill = "royalblue") +
+  facet_wrap(~Label, scales = "free") +
+  labs(x = "Expression", y = "Frequency", title = "Expression Data Distribution by Product") +
+  theme_classic(base_size=14)
+```
+
+```{r Ammonium Data}
+#WILCOXON RANK SUM T-TEST
+#Creating a dataset for the ammonium gene products
+ammonium_data <- long_exiguo_data_product %>%
+  filter(Label == "Ammonium")
+
+#Creating datasets for Control and Exiguo
+ammonium_control <- filter(ammonium_data, Trial %in% c("1", "2", "3"))
+ammonium_exiguo <- filter(ammonium_data, Trial %in% c("4", "5", "6"))
+?wilcox.test
+
+ammonium_wilcox_test_result <- wilcox.test(ammonium_control$Expression, ammonium_exiguo$Expression)
+print(ammonium_wilcox_test_result)
+```
+
+```{r ATP Data}
+#WILCOXON RANK SUM T-TEST
+#Creating a dataset for the ATP gene products
+ATP_data <- long_exiguo_data_product %>%
+  filter(Label == "ATP")
+
+#Creating datasets for Control and Exiguo
+ATP_control <- filter(ATP_data, Trial %in% c("1", "2", "3"))
+ATP_exiguo <- filter(ATP_data, Trial %in% c("4", "5", "6"))
+
+ATP_wilcox_test_result <- wilcox.test(ATP_control$Expression, ATP_exiguo$Expression)
+print(ATP_wilcox_test_result)
+```
+
+```{r Biotin Data}
+#WILCOXON RANK SUM T-TEST
+#Creating a dataset for the biotin gene products
+biotin_data <- long_exiguo_data_product %>%
+  filter(Label == "Biotin")
+
+#Creating datasets for Control and Exiguo
+biotin_control <- filter(biotin_data, Trial %in% c("1", "2", "3"))
+biotin_exiguo <- filter(biotin_data, Trial %in% c("4", "5", "6"))
+
+biotin_wilcox_test_result <- wilcox.test(biotin_control$Expression, biotin_exiguo$Expression)
+print(biotin_wilcox_test_result)
+```
+```{r Nitrogen Data}
+#WILCOXON RANK SUM T-TEST
+#Create a dataset for nitrogen gene products
+nitro_data <- long_exiguo_data_product %>%
+  filter(Label == "Nitrogen")
+
+#Creating datasets for Control and Exiguo
+nitro_control <- filter(nitro_data, Trial %in% c("1", "2", "3"))
+nitro_exiguo <- filter(nitro_data, Trial %in% c("4", "5", "6"))
+
+nitro_wilcox_test_result <- wilcox.test(nitro_control$Expression, nitro_exiguo$Expression)
+print(nitro_wilcox_test_result)
+```
+```{r Phosphorus Data}
+#WILCOXON RANK SUM T-TEST
+#Create a dataset for the phosphorus gene products
+phos_data <- long_exiguo_data_product %>%
+  filter(Label == "Phosphorus")
+
+#Creating datasets for Control and Exiguo
+phos_control <- filter(phos_data, Trial %in% c("1", "2", "3"))
+phos_exiguo <- filter(phos_data, Trial %in% c("4", "5", "6"))
+
+phos_wilcox_test_result <- wilcox.test(phos_control$Expression, phos_exiguo$Expression)
+print(phos_wilcox_test_result)
+```
+
+```{r Volcano Plot of Entire Dataset}
+# Setting significance threshold to 0.05
+significance_threshold <- 0.05
+
+# Removing NAs from FDR p-value
+cleaned_long_exiguo_data <- long_exiguo_data[!is.na(long_exiguo_data$FDR.p.value), ]
+
+# Convert FDR.p.value to numeric
+cleaned_long_exiguo_data$FDR.p.value <- as.numeric(cleaned_long_exiguo_data$FDR.p.value)
+
+# Converting to numeric to ensure data plots correctly 
+cleaned_long_exiguo_data$Fold.change <- as.numeric(cleaned_long_exiguo_data$Fold.change)
+
+# Filter out non-numeric or zero values in Fold.change
+cleaned_long_exiguo_data <- cleaned_long_exiguo_data[!is.na(cleaned_long_exiguo_data$Fold.change) & cleaned_long_exiguo_data$FDR.p.value != 0, ]
+
+# Now plot the data, applying log10() only to numeric values
+ggplot(data = cleaned_long_exiguo_data, aes(x = Fold.change, y = ifelse(FDR.p.value > 0, -log10(FDR.p.value), NA))) +
+  geom_point(aes(color = FDR.p.value <= significance_threshold), shape = 20) +
+  scale_color_manual(values = c("black", "royalblue"), guide = FALSE) +
+  xlim(-4.5, 4.5) +
+  ylim(0, 25) +
+  labs(x = "Log2(Fold Change)", y = "-log10(FDR-adjusted p-value)") +
+  theme_classic(base_size=14)
+```
+
+```{r Linear Regression}
+#Creating a linear model
+lm_model <- lm(Fold.change ~ Expression, data = cleaned_long_exiguo_data)
+summary(lm_model)
+
+#Plotting the model
+ggplot(cleaned_long_exiguo_data, aes(x = Expression, y = Fold.change)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "royalblue") + 
+  labs(x = "Expression (tags per million, tpm)", y = "Fold Change") +
+  theme_classic(base_size=14)
+```
